@@ -52,9 +52,10 @@ from plugins.sampler.base_sampler_plugin import BaseSamplerPlugin
 
 
 def check_sampler_selected(wizard):
-    # if wizard.steps.current != AUTOMATED_SAMPLER_SPEC:
-    cleaned_data = wizard.get_cleaned_data_for_step(AUTOMATED_SPEC) or {}
-    return cleaned_data.get("select_experiment_sampler", False)
+    return True  # the following raises recursion error
+    # # if wizard.steps.current != AUTOMATED_SAMPLER_SPEC:
+    # cleaned_data = wizard.get_cleaned_data_for_step(AUTOMATED_SPEC) or {}
+    # return cleaned_data.get("select_experiment_sampler", False)
 
 
 class CreateExperimentWizard(LoginRequiredMixin, SelectLabMixin, SessionWizardView):

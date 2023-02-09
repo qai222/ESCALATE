@@ -38,10 +38,13 @@ reagent2 = {
 
 reagent3 = {"Formamidinium Iodide": "2.63 M", "Gamma-Butyrolactone": "0.0 M"}
 
-reagent7 = {"Formic Acid": "26.5 M"}
+# reagent7 = {"Formic Acid": "26.5 M"}
 
-reagents = [reagent1, reagent2, reagent3, reagent7]
-descriptions = ["Reagent1", "Reagent2", "Reagent3", "Reagent7"]
+# reagents = [reagent1, reagent2, reagent3, reagent7]
+# descriptions = ["Reagent1", "Reagent2", "Reagent3", "Reagent7"]
+
+reagents = [reagent1, reagent2, reagent3]
+descriptions = ["Reagent1", "Reagent2", "Reagent3"]
 
 # %%
 nExpt = 96
@@ -86,8 +89,14 @@ def convex_hull_intersection(points1: np.ndarray, points2: np.ndarray, vis2d=Fal
     """
 
     assert points1.shape[1] == points2.shape[1]
-    hull1 = ConvexHull(points1)
-    hull2 = ConvexHull(points2)
+    if len(points1) == 3:
+        center = np.mean(np.array(points1), axis=0)
+        eps = np.random.rand(3) * 1e-3
+        center += eps
+        print(eps)
+        points1 = np.vstack((points1, center))
+    hull1 = ConvexHull(points1, qhull_options="Qa")
+    hull2 = ConvexHull(points2, qhull_options="Qa")
     A = np.vstack((hull1.equations[:, :-1], hull2.equations[:, :-1]))
     b = np.hstack((hull1.equations[:, -1], hull2.equations[:, -1]))
     res = linprog(c=np.zeros(A.shape[1]), A_ub=A, b_ub=-b, method="interior-point")
@@ -220,40 +229,40 @@ def in_hull(points, x):
 # ## Sampling Functions
 
 # %%
-def allowedExperiments(reagents, maxConcentration, minConcentration):
-    """Find the allowed ConvexHull given the reagent definitions and max/min concentration.
-
-    Note that, relative to the Mathematica code, the location of max and min
-    concentration in the function arguments are swapped.
-    This allows for the case where you only want to give a max concentration.
-
-    Because this generates a scipy ConvexHull, it is susceptible to dimensional constraints.
-
-    Args:
-        reagents: dictionary of reagent definitions.
-        maxConcentration: the maximum concentration imposed.
-        minConcentration: the minimum concentration imposed.
-
-    Returns:
-        scipy ConvexHull defining the allowed experimental sampling region.
-    """
-    compositionBoundary = np.array(
-        list(reagents.values())
-    )  # array of convex hull points
-    minMax = []  # list to format imposedBoundary points
-    if (type(minConcentration) is list) and (
-        type(maxConcentration)
-    ) is list:  # run this if both min/max Concentrations are given as lists
-        for i in range(len(minConcentration)):  # formats imposedBoundary into coords
-            minMax.append([minConcentration[i], maxConcentration[i]])
-        imposedBoundary = np.array(minMax)  # array of imposedBoundary points
-        return ConvexHull(
-            convex_hull_intersection(compositionBoundary, bb_to_cds(imposedBoundary))
-        )  # return the intersection convex hull
-    else:
-        return print("error")  # or print an error
-
-
+# def allowedExperiments(reagents, maxConcentration, minConcentration):
+#     """Find the allowed ConvexHull given the reagent definitions and max/min concentration.
+#
+#     Note that, relative to the Mathematica code, the location of max and min
+#     concentration in the function arguments are swapped.
+#     This allows for the case where you only want to give a max concentration.
+#
+#     Because this generates a scipy ConvexHull, it is susceptible to dimensional constraints.
+#
+#     Args:
+#         reagents: dictionary of reagent definitions.
+#         maxConcentration: the maximum concentration imposed.
+#         minConcentration: the minimum concentration imposed.
+#
+#     Returns:
+#         scipy ConvexHull defining the allowed experimental sampling region.
+#     """
+#     compositionBoundary = np.array(
+#         list(reagents.values())
+#     )  # array of convex hull points
+#     minMax = []  # list to format imposedBoundary points
+#     if (type(minConcentration) is list) and (
+#         type(maxConcentration)
+#     ) is list:  # run this if both min/max Concentrations are given as lists
+#         for i in range(len(minConcentration)):  # formats imposedBoundary into coords
+#             minMax.append([minConcentration[i], maxConcentration[i]])
+#         imposedBoundary = np.array(minMax)  # array of imposedBoundary points
+#         return ConvexHull(
+#             convex_hull_intersection(compositionBoundary, bb_to_cds(imposedBoundary))
+#         )  # return the intersection convex hull
+#     else:
+#         return print("error")  # or print an error
+#
+#
 def allowedExperiments(reagents, maxConcentration, minConcentration=None):
     """Find the allowed ConvexHull given the reagent definitions and max/min concentration.
 

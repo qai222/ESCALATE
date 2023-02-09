@@ -65,6 +65,9 @@ class Command(BaseCommand):
         # self._load_reagents_and_outcomes()
         self._create_wf1()
         self._create_wf3()
+
+        self._create_wf3new()
+
         self._load_descriptors()
         self.stdout.write(self.style.NOTICE("Finished loading load tables"))
         return
@@ -399,6 +402,390 @@ class Command(BaseCommand):
                 )
                 param.save()
                 action_def.parameter_def.add(param)
+
+    def _create_wf3new(self):
+        # 2023/01 wf3 for copper without acid, template creation is buggy so im using this quick dirty fix
+        plate = Vessel.objects.create(
+            description="48 well plate - WF3",
+            well_number=48,
+            parent=None,
+            metadata={'well_order':
+                          ['A1', 'C1', 'E1', 'G1', 'B2', 'D2', 'F2', 'H2', 'A3', 'C3', 'E3', 'G3',
+                           'B4', 'D4', 'F4', 'H4', 'A5', 'C5', 'E5', 'G5', 'B6', 'D6', 'F6', 'H6',
+                           'A7', 'C7', 'E7', 'G7', 'B8', 'D8', 'F8', 'H8', 'A9', 'C9', 'E9', 'G9',
+                           'B10', 'D10', 'F10', 'H10', 'A11', 'C11', 'E11', 'G11', 'B12', 'D12', 'F12', 'H12']})
+
+        plate.vessel_type.add(VesselType.objects.get(description="plate"))
+        plate.save()
+        plate_wells = {}
+        vial_type = VesselType.objects.get(description="well")
+
+        column_order = "ACEGBDFH"
+        rows = 12
+        a_well_list = []
+        b_well_list = []
+        well_list = []
+        for row in range(rows):
+            if (row + 1) % 2 != 0:
+                for col in column_order[0:4]:
+                    a_well_list.append("{}{}".format(col, row + 1))
+                    well_list.append("{}{}".format(col, row + 1))
+            else:
+                for col in column_order[4:]:
+                    b_well_list.append("{}{}".format(col, row + 1))
+                    well_list.append("{}{}".format(col, row + 1))
+        for well in well_list:
+            plate_wells[well] = Vessel(parent=plate, description=well)
+
+        Vessel.objects.bulk_create(plate_wells.values())
+        for well in well_list:
+            plate_wells[well].vessel_type.add(vial_type)
+            plate_wells[well].save()
+
+        # Get the lab related to this template
+        lab = Actor.objects.get(
+            description="Haverford College",
+            person__isnull=True,
+            systemtool__isnull=True,
+        )
+
+        # Create the experiment
+        exp_template, created = ExperimentTemplate.objects.get_or_create(
+            description="Workflow 3 noacid",
+            ref_uid="workflow_3_noacid",
+            lab=lab,
+        )
+        # exp_template.save()
+
+        reagents = {
+            "Reagent 2 - Stock A": ["inorganic", "organic", "solvent"],
+            "Reagent 3 - Stock B": ["inorganic", "organic", "solvent"],
+            "Reagent 1 - Solvent": ["solvent"],
+            "Reagent 9 - Antisolvent": ["solvent"],
+        }
+
+        # Vals for each default value
+        volume_val = {"value": 0, "unit": "ml", "type": "num"}
+        dead_vol_val = {"value": 4000, "unit": "uL", "type": "num"}
+        amount_val = {"value": 0, "unit": "g", "type": "num"}
+        conc_val = {"value": 0, "unit": "M", "type": "num"}
+        crystal_score_val = {"value": 0, "unit": "", "type": "int"}
+
+        # Create default values
+        default_volume, created = DefaultValues.objects.get_or_create(
+            **{
+                "description": "Zero ml",
+                "nominal_value": volume_val,
+                "actual_value": volume_val,
+            }
+        )
+        default_dead_volume, created = DefaultValues.objects.get_or_create(
+            **{
+                "description": "4000 uL",
+                "nominal_value": dead_vol_val,
+                "actual_value": dead_vol_val,
+            }
+        )
+        default_amount, created = DefaultValues.objects.get_or_create(
+            **{
+                "description": "Zero g",
+                "nominal_value": amount_val,
+                "actual_value": amount_val,
+            }
+        )
+        default_conc, created = DefaultValues.objects.get_or_create(
+            **{
+                "description": "Zero M",
+                "nominal_value": conc_val,
+                "actual_value": conc_val,
+            }
+        )
+        default_crystal_score, created = DefaultValues.objects.get_or_create(
+            **{
+                "description": "Zero Crystal score",
+                "nominal_value": crystal_score_val,
+                "actual_value": crystal_score_val,
+            }
+        )
+
+        # Concentration and amount data to be stored for each reagent material
+        reagent_values = {"concentration": default_conc, "amount": default_amount}
+
+        # Create total volume and dead volume property templates for each reagent
+        total_volume_prop, created = PropertyTemplate.objects.get_or_create(
+            **{
+                "description": "total volume",
+                "property_def_class": "extrinsic",
+                "short_description": "volume",
+                "default_value": default_volume,
+            }
+        )
+        dead_volume_prop, created = PropertyTemplate.objects.get_or_create(
+            **{
+                "description": "dead volume",
+                "property_def_class": "extrinsic",
+                "short_description": "dead volume",
+                "default_value": default_dead_volume,
+            }
+        )
+
+        # Loop through each reagent in reagents dict and create ReagentTemplates,
+        # corresponding ReagentMaterialTemplates and their Property Templates
+        for r, rms in reagents.items():
+            reagent_template, created = ReagentTemplate.objects.get_or_create(
+                experiment_template=exp_template,
+                description=r,
+            )
+            reagent_template.properties.add(total_volume_prop)
+            reagent_template.properties.add(dead_volume_prop)
+            # exp_template.reagent_templates.add(reagent_template)
+            for rm in rms:
+                self.stdout.write(self.style.NOTICE(f"{rm}"))
+                material_type = MaterialType.objects.get(description=rm)
+                (
+                    reagent_material_template,
+                    created,
+                ) = ReagentMaterialTemplate.objects.get_or_create(
+                    **{
+                        "description": f"{r}: {rm}",
+                        "reagent_template": reagent_template,
+                        "material_type": material_type,
+                    }
+                )
+
+                for rv, default in reagent_values.items():
+                    (rmv_template, created,) = PropertyTemplate.objects.get_or_create(
+                        # ReagentMaterialValueTemplate.objects.get_or_create(
+                        **{
+                            "description": rv,
+                            # "reagent_material_template": reagent_material_template,
+                            "default_value": default,
+                        }
+                    )
+                    reagent_material_template.properties.add(rmv_template)
+
+        # Dictionary of plate wells so that we don't keep accessing the database
+        # multiple times
+        a_wells = {}
+        b_wells = {}
+        for well in a_well_list:
+            a_wells[well] = Vessel.objects.get(parent=plate, description=well)
+        for well in b_well_list:
+            b_wells[well] = Vessel.objects.get(parent=plate, description=well)
+
+        # Create outcome templates, Currently hard coded to capture 96 values
+        ot, created = OutcomeTemplate.objects.get_or_create(
+            description="Crystal score",
+            experiment_template=exp_template,
+            # instance_labels=well_list,
+            default_value=default_crystal_score,
+        )
+        ot.save()
+        # exp_template.outcome_templates.add(ot)
+
+        action_parameter_def = {
+            "dispense": (("volume", "uL"),),
+            "bring_to_temperature": (("temperature", "degC"),),
+            "stir": (("duration", "s"), ("speed", "rpm")),
+            "heat": (("temperature", "degC"), ("duration", "s")),
+            "heat_stir": (("duration", "s"), ("speed", "rpm"), ("temperature", "degC")),
+            "dwell": (("duration", "s"),),
+        }
+        # Action defs it is assumed that action defs are already inserted
+        actions = [  # List of tuples (Description, Action def description, source_bommaterial, destination_bommaterial)
+            # Preheat plate
+            (
+                "Preheat Plate",
+                "bring_to_temperature",
+                (None, None),
+                ("vessel", "48 well plate - WF3"),
+                "Preheat Plate",
+            ),
+            # Dispense Solvent to vials
+            (
+                "Dispense Reagent 1 - Solvent",
+                "dispense",
+                (None, "Reagent 1 - Solvent"),
+                ("vessel", a_wells),
+                "Dispense Reagent 1 - Solvent",
+            ),
+            # Dispense Stock A to vials
+            (
+                "Dispense Reagent 2 - Stock A",
+                "dispense",
+                (None, "Reagent 2 - Stock A"),
+                ("vessel", a_wells),
+                "Dispense Reagent 2 - Stock A",
+            ),
+            # Dispense Stock B to vials
+            (
+                "Dispense Reagent 3 - Stock B",
+                "dispense",
+                (None, "Reagent 3 - Stock B"),
+                ("vessel", a_wells),
+                "Dispense Reagent 3 - Stock B",
+            ),
+            # Mix
+            (
+                "Heat-Stir",
+                "heat_stir",
+                (None, None),
+                ("vessel", "48 well plate - WF3"),
+                "Heat-Stir",
+            ),
+            # Dispense antisolvent
+            (
+                "Dispense Reagent 9 - Antisolvent",
+                "dispense",
+                (None, "Reagent 9 - Antisolvent"),
+                ("vessel", b_wells),
+                "Dispense Reagent 9 - Antisolvent",
+            ),
+            # Store to wait for crystal growth
+            (
+                "Store",
+                "dwell",
+                (None, None),
+                ("vessel", "48 well plate - WF3"),
+                "Store",
+            ),
+        ]
+
+        prev_action_template = None
+        for action_tuple in actions:
+            (
+                action_desc,
+                action_def_desc,
+                (source_col, source_desc),
+                (dest_col, dest_desc),
+                action_seq,
+            ) = action_tuple
+            action_def, created = ActionDef.objects.get_or_create(
+                description=action_def_desc
+            )
+            # action_sequences[action_seq].action_def.add(action_def)
+
+            """
+            action = Action(
+                description=action_desc,
+                action_def=action_def,
+                action_sequence=action_sequences[action_seq],
+            )
+            action.save()
+            """
+            source_vessel_template = None
+            source_vessel_decomposable = False
+            if source_desc:
+                default_vessel, created = Vessel.objects.get_or_create(
+                    description="Generic Vessel"
+                )
+                source_vessel_template, created = VesselTemplate.objects.get_or_create(
+                    experiment_template=exp_template,
+                    description=source_desc,
+                    outcome_vessel=False,
+                    # decomposable=False,
+                    default_vessel=default_vessel,
+                )
+                # exp_template.vessel_templates.add(source_vessel_template)
+
+            dest_vessel_template = None
+            dest_vessel_decomposable = False
+            if dest_desc:
+                # default_vessel = Vessel.objects.get(description="96 Well Plate well")
+                default_vessel = plate
+                (dest_vessel_template, created,) = VesselTemplate.objects.get_or_create(
+                    experiment_template=exp_template,
+                    description="Outcome vessel",
+                    outcome_vessel=True,
+                    default_vessel=default_vessel,
+                )
+                if isinstance(dest_desc, str):
+                    dest_vessel_decomposable = False
+                elif isinstance(dest_desc, dict):
+                    dest_vessel_decomposable = True
+
+            at, created = ActionTemplate.objects.get_or_create(
+                description=action_desc,
+                experiment_template=exp_template,
+                action_def=action_def,
+                source_vessel_template=source_vessel_template,
+                source_vessel_decomposable=source_vessel_decomposable,
+                dest_vessel_template=dest_vessel_template,
+                dest_vessel_decomposable=dest_vessel_decomposable,
+            )
+
+            if prev_action_template is not None:
+                at.parent.add(prev_action_template)
+            prev_action_template = at
+
+            for param_def_desc, unit in action_parameter_def[action_def_desc]:
+                param, created = ParameterDef.objects.get_or_create(
+                    description=param_def_desc,
+                )
+                param.default_val = Val.from_dict(
+                    {"value": 0, "unit": unit, "type": "num"}
+                )
+                param.save()
+                # action.parameter_def.add(param)
+                action_def.parameter_def.add(param)
+
+            """
+            if source_desc is not None:
+                rt = ReagentTemplate.objects.get(description=source_desc)
+                source_bbm = BaseBomMaterial.objects.create(
+                    description=source_desc, reagent=rt
+                )
+            else:
+                source_bbm = None
+
+            if dest_col == "vessel":
+                if isinstance(dest_desc, dict):
+                    for well in dest_desc.values():
+                        dest_bbm = BaseBomMaterial.objects.create(
+                            description=f"{plate.description} : {well.description}",
+                            vessel=well,
+                        )
+                        if source_bbm:
+                            description = f"{action.description} : {source_bbm.description} -> {dest_bbm.description}"
+                        else:
+                            description = (
+                                f"{action.description} : {dest_bbm.description}"
+                            )
+                        ActionUnit.objects.create(
+                            action=action,
+                            source_material=source_bbm,
+                            destination_material=dest_bbm,
+                            description=description,
+                        )
+                else:
+                    dest_bbm = BaseBomMaterial.objects.create(
+                        description=plate.description, vessel=plate
+                    )
+                    if source_bbm:
+                        description = f"{action.description} : {source_bbm.description} -> {dest_bbm.description}"
+                    else:
+                        description = f"{action.description} : {dest_bbm.description}"
+                    ActionUnit.objects.create(
+                        action=action,
+                        source_material=source_bbm,
+                        description=description,
+                        destination_material=dest_bbm,
+                    )
+
+            elif dest_col is None:
+                dest_bbm = BaseBomMaterial.objects.create(description=dest_desc)
+                if source_bbm:
+                    description = f"{action.description} : {source_bbm.description} -> {dest_bbm.description}"
+                else:
+                    description = f"{action.description} : {dest_bbm.description}"
+                au = ActionUnit(
+                    action=action,
+                    source_material=source_bbm,
+                    description=description,
+                    destination_material=dest_bbm,
+                )
+                au.save()
+            """
 
     def _create_wf3(self):
         # Creating the 48 well plate used for WF3 experiments

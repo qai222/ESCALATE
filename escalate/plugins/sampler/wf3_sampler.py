@@ -16,7 +16,7 @@ Q_ = units.Quantity
 
 
 class WF3SamplerPlugin(BaseSamplerPlugin):
-    name = "Statespace sampler for WF3"
+    name = "Statespace sampler for WF3 no acid"
 
     sampler_vars = {
         "finalVolume": (
@@ -38,7 +38,7 @@ class WF3SamplerPlugin(BaseSamplerPlugin):
         super().__init__(*args, **kwargs)
 
     def validate(self, data: ExperimentData):
-        if data.experiment_template.description not in ["Workflow 3"]:
+        if data.experiment_template.description not in ["Workflow 3 noacid"]:
             self.errors.append(
                 f"Selected template is not Workflow 3. Found: {data.experiment_template.description}"
             )
@@ -165,7 +165,7 @@ class WF3SamplerPlugin(BaseSamplerPlugin):
             "Dispense Reagent 1 - Solvent": "Reagent 1 - Solvent",
             "Dispense Reagent 2 - Stock A": "Reagent 2 - Stock A",
             "Dispense Reagent 3 - Stock B": "Reagent 3 - Stock B",
-            "Dispense Reagent 7 - Acid": "Reagent 7 - Acid",
+            # "Dispense Reagent 7 - Acid": "Reagent 7 - Acid",
             #"Dispense Reagent 7 - Acid Volume 1": "Reagent 7 - Acid",
             #"Dispense Reagent 7 - Acid Volume 2": "Reagent 7 - Acid",
             "Dispense Reagent 9 - Antisolvent": "Reagent 9 - Antisolvent",
